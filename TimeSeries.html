@@ -1,0 +1,465 @@
+<link rel="shortcut icon" href=""> 
+
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<style>
+.main-chart {
+  text-align: center;
+}
+.glyphicon-plus{
+  font-size:4.5vw;
+  color:#444444;
+  opacity: 0.8;
+  text-align: center;
+  margin-left: 0.5vw;
+  position: relative;
+  top: 50%;
+  transform: perspective(1px) translateY(-50%);
+}
+.data-panel{
+  background-color: #999999;
+  margin: 10px;
+  text-align: center;
+  vertical-align: middle;
+  display:block;
+  padding-top: 1.5vw;
+  padding-bottom: 2.0vw;
+  height: 15vh;
+  font-size: 0.8vw;
+}
+.panel-remove{
+  position: absolute;
+  font-size: 1.2vw;
+  color:#444444;
+  opacity: 0.8;
+  top: 3;
+  right: 3;
+}
+</style>
+
+
+<body>
+  <div class="container">
+    <h1 class="display-4" style="text-align:center;">Circulation of Magazines over Time</h1>
+    <div class="row">
+      <div class="col-md-12" style="text-align:center;">
+        <svg class="main-chart" width="1080" height="720"></svg>
+      </div>
+    </div>
+
+    <div class="row" id="data-info">
+        <div class="col-sm-2">
+          <div class="col-sm-12 data-panel" id="data-panel1">
+            <span class="glyphicon glyphicon-plus" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="col-sm-2">
+          <div class="col-sm-12 data-panel" id="data-panel2">
+            <span class="glyphicon glyphicon-plus" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="col-sm-2">
+          <div class="col-sm-12 data-panel" id="data-panel3">
+            <span class="glyphicon glyphicon-plus" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="col-sm-2">
+          <div class="col-sm-12 data-panel" id="data-panel4">
+            <span class="glyphicon glyphicon-plus" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="col-sm-2">
+          <div class="col-sm-12 data-panel" id="data-panel5">
+            <span class="glyphicon glyphicon-plus" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="col-sm-2">
+          <div class="col-sm-12 data-panel" id="data-panel6">
+            <span class="glyphicon glyphicon-plus" aria-hidden="true"></span>
+          </div>
+        </div>
+    </div>
+  </div>
+</body>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<script>
+var svg = d3.select("svg");
+
+var svgHeight = +svg.attr("height");
+var svgWidth = +svg.attr("width");
+
+var gMargins = {
+  top:10,
+  right:0,
+  bottom:20,
+  left:60
+}
+
+var g = svg.append("g") //main graphics element
+  .attr("transform", "translate("+gMargins.left+","+gMargins.top+")")
+  .attr("height", svgHeight - gMargins.top - gMargins.bottom)
+  .attr("width", svgWidth - gMargins.right - gMargins.left);
+
+var height = +g.attr("height");
+var width = +g.attr("width");
+
+var lineRef = g.append("rect") //reference line
+  .attr("y", 0)
+  .attr("height", height)
+  .attr("width", 1)
+  .attr("fill-opacity", 0.5);
+
+var gCharts = svg.append("g") //holds the path and invisible data points
+  .attr("id", "gcharts")
+  .attr("transform", "translate("+gMargins.left+","+gMargins.top+")")
+  .attr("height", height - gMargins.top - gMargins.bottom)
+  .attr("width", width - gMargins.right - gMargins.left);
+
+//Generates the path
+var lineFn = d3.line()
+        .x(function(d){
+          return xScale(d.Date)})
+        .y(function(d){
+          return yScale(d.Circulation)});
+
+//Clean the data
+var parseTime = d3.timeParse("%d %b %Y");
+
+//for the tool tip
+var formatTime = d3.timeFormat("%b %e, %Y");
+
+var pathType = d3.scaleOrdinal(d3.schemeCategory10);
+
+var xScale = d3.scaleTime()
+  .domain([new Date(1923, 10, 23), new Date(1942, 9, 29)])
+  .range([0, width]); 
+
+var yScale = d3.scaleLinear()
+  .domain([0,1])
+  .range([height, 0]);
+
+var xAxis = d3.axisBottom(xScale);
+
+var yAxis = d3.axisLeft(yScale);
+
+var gXAxis = svg.append("g")
+  .attr("transform", "translate("+gMargins.left+", " +(height+gMargins.top)+")")
+  .call(xAxis);
+
+var gYAxis = svg.append("g")
+  .attr("transform", "translate("+gMargins.left+","+gMargins.top+")")
+  .call(yAxis);
+
+var tooltipContainer = d3.select("#data-info");
+
+var gDots = svg.append("g") //contains the dots (follows the line)
+  .attr("transform", "translate("+gMargins.left+","+gMargins.top+")")
+  .attr("height", height - gMargins.top - gMargins.bottom)
+  .attr("width", width - gMargins.right - gMargins.left);
+
+var activePanels = { //MAIN DATA STRUCTURE
+  abrvs:[],
+  paths:{},
+  datas:{},
+  addAbrvs:function(abrv, panel){
+    var panels = activePanels.dataPanels;
+    function findAbrvAfter() {
+      for (var i = 0; i < panels.length; i++) {
+        if (panels[i].attr("id") == panel.attr("id")) {
+          for (var j = i + 1; j < panels.length; j++) {
+            var magabrv = panels[j].attr("magabrv");
+            if (magabrv) {
+              return magabrv;
+            }
+          }
+        }
+      }
+      return null; //if there are no abbreviations after it, return null
+    }
+    var abrvs = activePanels.abrvs;
+    var abrvAfter = findAbrvAfter();
+    if (abrvAfter == null) {
+      abrvs.push(abrv);
+    } else {
+      for (var i = 0; i < abrvs.length; i++) {
+        if (abrvs[i] == abrvAfter) {
+          abrvs.splice(i, 0, abrv);
+          return;
+        }
+      }
+    }
+  },
+  dataPanels:[$("#data-panel1"), $("#data-panel2"), $("#data-panel3"), $("#data-panel4"), $("#data-panel5"), $("#data-panel6")]
+}
+
+function mouseMove() {
+  function closestData(data, mouse) {
+    function dist(n1, n2) { //only compare x values
+      return n1.x-n2.x;
+    }
+    var mouse = {"x":mouse[0], "y":mouse[1]};
+
+    var maxi = data.length;
+    var mini = 0;
+    var p;
+    //perform binary search
+    while (maxi > mini) {
+      var midi = Math.floor((maxi+mini)/2);
+      p = data[midi];
+      p.x = xScale(p.Date);
+      var distance = dist(p, mouse);
+      if (distance == 0) {
+        return data[midi];
+      }
+      if (distance > 0) {// if the distance is positive, go left
+        maxi = midi;
+      } else {
+        mini = midi + 1;
+      }
+    }
+
+    var smallestDist = Infinity;
+    var nearbyPs = [];
+    for (var i = -3; i <= 3; i++) { //do a search around
+      if (midi+i < 0 || midi + i >= data.length) {
+        continue;
+      }
+      var nearbyP = data[midi+i];
+      nearbyP.x = xScale(nearbyP.Date);
+      nearbyP.y = yScale(nearbyP.Circulation)
+      nearbyPs.push(nearbyP)
+      var absDistance = Math.abs(dist(nearbyP, mouse));
+      if (absDistance < smallestDist) {
+        smallestDist = absDistance;
+        p = nearbyP;
+      }
+    }
+    return p;
+  }
+
+  var mouse = d3.mouse(this);
+  mouse[0]-=gMargins.left;
+  lineRef.attr("x", mouse[0]); //set the location of the reference bar
+
+  var closestDataPerLine = [];
+
+  var abrvs = activePanels.abrvs;
+  var paths = activePanels.paths;
+  for (var i = 0; i < abrvs.length; i++) {
+    var cData = closestData(paths[abrvs[i]].data(), mouse);
+    closestDataPerLine.push(cData);
+  }
+
+  var dots = gDots.selectAll("circle")
+    .data(closestDataPerLine);
+
+  dots.enter() //append new dots
+    .append("circle")
+    .attr("r", 4)
+    .attr("fill", function(d){
+      return d3.color(pathType(d.Title)).darker()})
+  .merge(dots) //merge update and enter selections
+    .attr("cx", function(d){return xScale(d.Date)})
+    .attr("cy", function(d){return yScale(d.Circulation)});
+
+  dots.exit().remove();
+
+  var tooltips = tooltipContainer.selectAll(".active-panel")
+    .data(closestDataPerLine);
+
+  tooltips
+    .style("background-color", function(d){
+      return d3.color(pathType(d.Title)).brighter()
+    })
+    .html(function(d){
+      return '<span class="glyphicon glyphicon-remove-circle panel-remove" aria-hidden="true"></span>'+
+      "<b>"+d.Title+"</b>"+
+      "<br>Circulation: " + (d.Circulation)+
+      "<br>Date: " + formatTime(d.Date);
+    });
+}
+
+function loadData(abrv, data) {
+  var filename = "data/" +abrv+ "_time_series.csv";
+
+  d3.csv(filename, function(data) {
+      data.forEach(function(d) {
+        d.Date = parseTime(d.Date);
+        // console.log(d.Date);
+        //http://stackoverflow.com/questions/10610402/javascript-replace-all-commas-in-a-string
+        d.Circulation = +(d.Circulation.replace(/,/g, ""));
+        d.Price = +d.Price;
+      });
+
+
+      // data.sort(function(a,b) {
+      //   return a.Date > b.Date;
+      // })
+
+      activePanels.datas[abrv] = data;
+      updateAxes();
+      drawLine();
+      
+    });
+}
+
+function updateAxes() {
+  var abrvs = activePanels.abrvs;
+    var datas = activePanels.datas;
+    //for each dataset, check all dates, return min and max
+    var allData = [];
+    for (var i = 0; i < abrvs.length; i++) {
+      allData = allData.concat(datas[abrvs[i]]);
+    }
+
+    xScale
+      .range([0, width])
+      .domain([d3.min(allData, function(d){return d.Date;}), 
+        d3.max(allData, function(d){return d.Date;})]); 
+
+    yScale
+      .range([height, 0])
+      .domain([0, d3.max(allData, function(d){return d.Circulation;})]);
+
+    var xAxis = d3.axisBottom(xScale);
+    var yAxis = d3.axisLeft(yScale);
+    gXAxis.transition().call(xAxis);
+    gYAxis.transition().call(yAxis);
+}
+
+function drawLine() {
+  gCharts.selectAll("path")
+    .data([])
+    .exit()
+    .transition()
+    // .duration(100)
+    .attr("opacity", 0)
+    .remove();
+
+  var abrvs = activePanels.abrvs;
+  var paths = activePanels.paths;
+  for (var i = 0; i < abrvs.length; i++) {
+    var abrv = abrvs[i];
+    var magData = activePanels.datas[abrv];
+    var line1 = gCharts.append("path")
+      .attr("opacity", 0)
+      .attr("stroke", pathType(magData[0].Title))
+      .attr("fill-opacity", 0)
+      .attr("d", lineFn(magData))
+      .transition()
+      .attr("opacity", 1);
+
+    var points = gCharts.selectAll(".point")
+      .data(magData)
+      .enter()
+      .append("circle")
+      .attr("cx", function(d){return xScale(d.Date)})
+      .attr("cy", function(d){return yScale(d.Circulation)})
+      .attr("fill", pathType(magData[0].Title))
+      .attr("r", 0)
+      .attr("fill-opacity", 0);
+    paths[abrv] = points;
+  }
+}
+
+
+//Overlayed rectangle
+svg.append("rect")
+  .attr("width", svgWidth)
+  .attr("height", svgHeight)
+  .attr("fill", "None")
+  .attr("pointer-events", "all")
+  .on("mousemove", mouseMove)
+  .on("mouseout", function(){lineRef.style("display", "none")})
+  .on("mouseover", function(){lineRef.style("display", "inline")})
+
+// d3.csv("circ_data_by_loc_with_statenames.csv", function(data) {
+//   console.log(data);
+      
+//     });
+</script>
+
+
+<script> //begin jquery
+//add new magazines here
+var magazines = [
+  {name:"Black Mask", abrv:"BLMA"},
+  {name:"New Yorker", abrv:"NEYO"},
+  {name:"Saturday Evening Post", abrv:"SAEV"},
+  {name:"Street & Smith", abrv:"STSM"}
+];
+var dataD = {"BLMA": data, "NEYO": neyoData};
+
+function genMagSelection() {
+  var start = '<select class="form-control mag-select">';
+  start+='<option value="" hidden>Select a magazine</option>';
+  for (var i = 0; i < magazines.length; i++) {
+    var magName = magazines[i].name;
+    var magAbrv = magazines[i].abrv;
+    if (activePanels.abrvs.indexOf(magAbrv) != -1) {
+      continue;
+    }
+    start+="<option value="+magAbrv+">"+magName+"</option>";
+  }
+  var end = '</select>';
+  return start+end;
+}
+
+$(document).ready(function(){
+
+  //populate the dropdown according to the js object
+  var dropDownUl = $("#dropdown-menu");
+  magazines.forEach(function(d){
+    //      <li role="presentation"><a role="menuitem" tabindex="-1" href="#">Black Mask</a></li>
+    var li = $('<li/>')
+      .appendTo(dropDownUl);
+
+    var a = $('<a/>')
+      .text(d.name)
+      .attr("id", d.abrv)
+      .addClass("dropdown-magazine")
+      .appendTo(li);
+  });
+
+  //should use delegations ".on('action', ...)" because I am dyamically adding elements
+  $(document).on("click", ".glyphicon-plus", function(){ //on click plus
+    $(this).parent().html(genMagSelection());
+  });
+  $(document).on("change", ".mag-select", function(){ //on select magazine
+    var magAbrv = $(this).children(":selected").val();
+    var panel = $(this).parent();
+    panel.attr('magabrv', magAbrv);
+    panel.addClass("active-panel");
+    activePanels.addAbrvs(magAbrv, panel);
+    // loadData(magAbrv, dataD[magAbrv]);
+    loadData(magAbrv);
+    $(this).remove();
+  })
+  $(document).on("click", ".glyphicon-remove-circle", function(){ //on remove panel
+    var parent = $(this).parent();
+    var abrv = parent.attr("magabrv");
+    var abrvs = activePanels.abrvs;
+    var index = abrvs.indexOf(abrv);
+    if (index > -1) {
+      abrvs.splice(index, 1);
+    }
+    parent.removeAttr('magabrv');
+    parent.removeClass("active-panel");
+
+    updateAxes();
+    drawLine(); //update the chart
+
+    parent.css("background-color", "#999999")
+    $(this).remove()
+    var plusSign = $('<span class="glyphicon glyphicon-plus" aria-hidden="true"></span>');
+    parent.html("");
+    parent.append(plusSign);
+    plusSign.css("transform", "perspective(1px) translateY(-50%)")
+
+  });
+});
+
+</script>
